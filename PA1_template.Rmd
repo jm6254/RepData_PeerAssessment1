@@ -1,20 +1,151 @@
 # Reproducible Research: Peer Assessment 1
 
 
+
+
 ## Loading and preprocessing the data
+
+This project is an analysis of activity (number of steps) measured by a personal activity measuring device. The dataset is in a .csv file and has 3 variables:
+  - steps (integer): steps taken in each 5-min interval (missing values = NA).
+  - date (factor): date when measurements were taken (%Y-%m-%d format).
+  - interval (integer): id for each 5-min interval over a 24-hour period.
+
+There are 17,568 observations altogether (288 intervals each day over a total of 61 days).
+
+The following code reads the data from the file.
+
+```{r}
+df <- read.csv("activity.csv")
+```
 
 
 
 ## What is mean total number of steps taken per day?
 
+The following code presents a histogram of number of steps taken on various days. The x-axis has the number of steps, and the y-axis has the number of days on which that number of steps were taken.
+
+```{r}
+hist(with(df, tapply(steps, date, sum, na.rm=TRUE)),
+     length(unique(df$interval)),
+     main="Histogram of total number of steps taken each day",
+     xlab="Total number of steps taken each day")
+```
+
+The greatest number of steps on a day fall in the range of about 10,000 to 15,000. On 9 days, 0 steps were recorded. (This does not include missing values.) The 0 values could represent complete inactivity but are more likely to be related to malfunction of the machine or error.
+
+The following printout shows the mean and median for the number of steps taken on each day. NaN and NA indicate that all values were missing on that particular day.
+
+```{r}
+means <- with(df, tapply(steps, date, mean, na.rm=TRUE))
+medians <- with(df, tapply(steps, date, median, na.rm=TRUE))
+row_names <- names(means)
+merge(data.frame(date=row_names, mean=means),
+      data.frame(date=row_names, median=medians),
+      by="date")
+```
+
+The median values are 0 because there are so many 5-min intervals during which no steps were taken. This is expected unless the subject is constantly walking throughout the day.
+
 
 
 ## What is the average daily activity pattern?
+
+The following plot shows the mean number of steps versus interval number for all days, i.e., a time sequence plot. For each interval (x-axis), results for the number of steps on all days have been added and divided by the number of valid observations to produce the y-axis value. Also, the interval during which there are the maximum mean number of steps is calculated.
+
+```{r}
+mean_daily_steps <- with(df, tapply(steps, interval, mean, na.rm=TRUE))
+plot(mean_daily_steps, type="l",
+     main="Plot of mean number of steps versus interval number for all days",
+     xlab="Interval number over a 24-hr time period",
+     ylab="Mean number of steps")
+df_daily_steps <- data.frame(interval=1:length(mean_daily_steps), mean_daily_steps)
+max_daily_steps <- max(mean_daily_steps)
+subset(df_daily_steps, mean_daily_steps==max_daily_steps)$interval
+max_daily_steps
+```
+
+The hours after midnight can be obtained by dividing the interval number by 12. Activity first increases at about 0530-0600, presumably upon getting out of bed. It reaches a peak at about 0900, then declines. There are a few smaller peaks at times in the range 1200 to 1900, and activity has declined to 0 by about 2300, presumably at bedtime. Interval 104 has the maximum mean number of steps (206.1698). This corresponds to time between 103/12 and 104/12 hours after midnight, i.e., 0835 and 0840.
 
 
 
 ## Imputing missing values
 
+The following code calculates and shows the total number of missing values (number of rows with NA for number of steps).
+
+```{r}
+sum(is.na(df$steps))
+```
+
+There are 2304 missing values. (The same calculation was done using df$date and df$interval, yielding 0 and confirming that there are no missing values for these parameters.)
+
+The following code replaces each missing value with the corresponding value from the results for mean daily steps for each time interval. It is assumed that if a value for number of steps during an interval is missing, the most likely number of steps would be an average of the number taken during that same interval on all other days. (Using the code directly above with the mean daily steps array, it was confirmed that there is no interval for which number of steps are missing on all days.)
+
+```{r}
+steps_new <- df$steps
+mean_daily_steps_rep <- rep(mean_daily_steps, length(unique(df$date)))
+for (i in 1:length(steps_new)) {
+  if (is.na(steps_new[i])) steps_new[i] <- mean_daily_steps_rep[i]
+}
+df_na_replaced <- data.frame(steps=steps_new, date=df$date, interval=df$interval)
+```
+
+The following code presents another a histogram like the previous one except that missing values have been replaced.
+
+```{r}
+hist(with(df_na_replaced, tapply(steps, date, sum, na.rm=TRUE)),
+     length(unique(df$interval)),
+     main=("Histogram of total number of steps taken each day 
+     with missing values replaced by mean values for all days"),
+     xlab="Total number of steps taken each day")
+```
+
+The main difference is a decrease in the number of days on which 0 steps were recorded. This is because there were some missing values on those same days, and filling in the missing values made the total no longer 0. There is also a corresponding increase in frequency of a particular number of steps slightly over 10,000.
+
+The following printout shows the mean and median for the number of steps taken on each day with replacement of the missing values.
+
+```{r}
+means <- with(df_na_replaced, tapply(steps, date, mean, na.rm=TRUE))
+medians <- with(df_na_replaced, tapply(steps, date, median, na.rm=TRUE))
+row_names <- names(means)
+merge(data.frame(date=row_names, mean=means),
+      data.frame(date=row_names, median=medians),
+      by="date")
+```
+
 
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+The following code divides the data according to whether the date is a weekday or weekend and then recalculates the results and presents the data in two time sequence plots. The dataset with missing values replaced has been used. The x- and y-axes of the plots are equivalent so that the two plots can be compared.
+
+
+```{r}
+date_days_of_week <- weekdays(strptime(df$date, format="%Y-%m-%d"))
+weekend <- c("Saturday", "Sunday")
+for (i in 1:length(date_days_of_week)) {
+  if (date_days_of_week[i] %in% weekend) date_days_of_week[i] <- "weekend"
+  else date_days_of_week[i] <- "weekday"
+}
+df_weekday_weekend <- data.frame(steps=steps_new,
+                                 date=as.factor(date_days_of_week),
+                                 interval=df$interval)
+list_weekday_weekend <- split(df_weekday_weekend, df_weekday_weekend$date)
+
+par(mfrow=c(2,1))
+
+mean_daily_steps <- with(list_weekday_weekend[[1]], tapply(steps, interval, mean))
+plot(mean_daily_steps, type="l", ylim=c(0,220), 
+     main="Plot of mean number of steps
+     versus interval number for weekdays", 
+     xlab="Interval number over a 24-hr time period", 
+     ylab="Mean number of steps")
+
+mean_daily_steps <- with(list_weekday_weekend[[2]], tapply(steps, interval, mean))
+plot(mean_daily_steps, type="l", ylim=c(0,220), 
+     main="Plot of mean number of steps 
+     versus interval number for weekends", 
+     xlab="Interval number over a 24-hr time period",
+     ylab="Mean number of steps")
+```
+
+The main differences in the weekend, as compared to the weekday, data are (a) a decrease in the amount of morning activity, especially in the range of about 0530 to 0830, (b) a moderate generalised increase in activity in the afternoon and evening and (c) a definite increase in activity at a late hour of about 1930 to 2140. This is consistent with weekday work causing the subject to get up earlier and be more active on weekday mornings. The subject's work may be the cause of the more sedentary behaviour on weekday afternoons. On weekends, the subject is probably not working and thus gets up later and tends to have more afternoon and late evening activity than is the case on weekdays.
